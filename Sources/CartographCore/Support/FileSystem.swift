@@ -271,8 +271,35 @@ extension FileSystem {
         onDiscardedLink: (String) -> Void = { _ in },
         onExternalDirectoryLink: (String) -> Void = { _ in }
     ) -> [String] {
+        recursiveFiles(
+            under: root, separatesNestedRepositories: false, isIncluded: { path, _ in isIncluded(path) },
+            shouldDescend: shouldDescend, onDirectory: onDirectory, onDiscardedLink: onDiscardedLink,
+            onExternalDirectoryLink: onExternalDirectoryLink
+        )
+    }
+
+    /// `recursiveFiles(under:isIncluded:…)` 와 같되, 켜면 파일마다 루트가 아닌 저장소 경계 아래로 걸어 들어왔는지를 함께 넘긴다.
+    ///
+    /// 경계는 `.git` 항목(디렉터리·파일, 대상이 있는 링크)이 있는 루트 아닌 디렉터리다. 소스 발견(`ProjectFileInventory`)은
+    /// 그런 디렉터리로 내려가지 않으므로 그 아래 파일을 세지 않는다. 판정은 걸은 길을 따라 한다 — 실제 경로의 접두사로
+    /// 정하면, 저장소 안을 가리키는 루트 안 디렉터리 링크(`App/Lib -> ../Vendor/Lib/Sources`)로 걸어 들어온 파일까지 경계
+    /// 아래로 잘못 본다. 소스 발견은 그 링크로는 내려가(`App/Lib/.git` 이 없다) 그 파일을 센다.
+    ///
+    /// 같은 실제 디렉터리를 경계 안팎 두 길로 걸을 수 있으므로 켜면 방문 기록을 둘로 나눈다. 경계 안에서 먼저 걸었다고 경계
+    /// 밖 길을 건너뛰면 그 파일이 경계 밖으로 한 번도 보이지 않는다. 결과 목록은 같은 파일을 한 번만 담고, 디렉터리·버려진
+    /// 링크·루트 밖 디렉터리 링크 콜백도 경로마다 한 번만 부른다 — 두 번 부르면 그 목록을 지문에 싣는 호출자의 답이 끈
+    /// 때와 달라진다(중첩 저장소 안의 `up -> ../..` 하나로 루트 전체를 두 번 걷는다). 끄면 앞의 함수와 같다.
+    public func recursiveFiles(
+        under root: String,
+        separatesNestedRepositories: Bool,
+        isIncluded: (_ path: String, _ insideNestedRepository: Bool) -> Bool,
+        shouldDescend: (String) -> Bool = { _ in true },
+        onDirectory: (String) -> Void = { _ in },
+        onDiscardedLink: (String) -> Void = { _ in },
+        onExternalDirectoryLink: (String) -> Void = { _ in }
+    ) -> [String] {
         guard directoryExists(at: root) else {
-            return fileExists(at: root) && isIncluded(root) ? [root] : []
+            return fileExists(at: root) && isIncluded(root, false) ? [root] : []
         }
         var result: [String] = []
         // 심볼릭 링크가 상위 디렉터리를 가리키면 같은 트리를 끝없이 다시 걷는다.
@@ -285,20 +312,30 @@ extension FileSystem {
         // 실제 경로면 그 아래 이름 철자도 실제 경로이고, 아니면 둘 다 같은
         // 철자로만 도달 가능하다.
         var visited: Set<String> = []
+        var visitedInsideNested: Set<String> = []
         var visitedFiles: Set<String> = []
+        // 끄면 같은 경로를 두 번 걷지 않으므로 이 기록은 아무것도 거르지 않는다.
+        var reportedDirectories: Set<String> = []
+        var reportedLinks: Set<String> = []
         // 루트는 해석된 철자로 열거한다. 예전 Foundation 구현이 돌려준 경로는
         // realpath 수준으로 풀린 철자였기 때문에 `/var`·`/tmp`처럼 링크가 끼어든
         // 조상 아래에서도 실제 경로가 반환됐다 — 인덱스 스토어가 기록한 철자와
         // 맞춰야 파일 단위 조회(최신 unit 시각)가 맞는다. 중간 링크까지 푸는
         // 것은 realpath 뿐이며 canonicalPath 는 마지막 구성 요소만 본다.
         let resolvedRoot = (try? realPath(at: root)) ?? Self.canonicalPath(root)
-        var pending: [(path: String, key: String)] = [(resolvedRoot, resolvedRoot)]
+        var pending: [(path: String, key: String, insideNested: Bool, isRoot: Bool)] =
+            [(resolvedRoot, resolvedRoot, false, true)]
 
         while let directory = pending.popLast() {
-            guard visited.insert(directory.key).inserted else { continue }
-            onDirectory(directory.path)
+            let firstVisit = directory.insideNested
+                ? visitedInsideNested.insert(directory.key).inserted
+                : visited.insert(directory.key).inserted
+            guard firstVisit else { continue }
+            if reportedDirectories.insert(directory.path).inserted { onDirectory(directory.path) }
             guard let entries = try? directoryEntries(at: directory.path)
             else { continue }
+            let insideNested = directory.insideNested
+                || (separatesNestedRepositories && !directory.isRoot && Self.containsRepositoryMarker(entries))
             for entry in entries {
                 // 링크 항목의 키도 루트와 같은 realpath 수준으로 풀어야 한다.
                 // canonicalPath 는 마지막 구성 요소만 풀어, 링크 대상이 링크 조상
@@ -316,18 +353,20 @@ extension FileSystem {
                     // 열거하게 만들고 그 소스의 경로·문자열이 분석 출력에 섞였다. 링크가 아닌
                     // 항목은 부모가 루트 안이면 그대로 안이므로 링크만 판정한다.
                     guard !entry.isSymbolicLink || isPath(key, within: resolvedRoot) else {
-                        onExternalDirectoryLink(entry.path)
+                        if reportedLinks.insert(entry.path).inserted { onExternalDirectoryLink(entry.path) }
                         continue
                     }
-                    pending.append((entry.path, key))
-                } else if entry.isRegularFile, isIncluded(entry.path) {
+                    pending.append((entry.path, key, insideNested, false))
+                } else if entry.isRegularFile, isIncluded(entry.path, insideNested) {
                     // 끊어진 심볼릭 링크는 일반 파일이 아니다. 그것을 소스 파일로 세면
                     // 읽는 쪽에서 실패하거나 유령 정점이 된다.
                     // 같은 파일을 가리키는 두 이름은 한 번만 센다.
                     guard visitedFiles.insert(visitKey()).inserted else {
                         // 버려진 이름도 나중에 다른 파일을 가리킬 수 있다 — 재지정은
                         // 부모 디렉터리 지문에는 드러나지 않으니 따로 감시한다.
-                        if entry.isSymbolicLink { onDiscardedLink(entry.path) }
+                        if entry.isSymbolicLink, reportedLinks.insert(entry.path).inserted {
+                            onDiscardedLink(entry.path)
+                        }
                         continue
                     }
                     result.append(entry.path)
@@ -335,6 +374,16 @@ extension FileSystem {
             }
         }
         return result.sorted()
+    }
+
+    /// 목록에 저장소 표시(`.git` 디렉터리·파일, 또는 대상이 있는 `.git` 링크)가 있는지.
+    ///
+    /// 소스 발견의 `fileExists(path + "/.git") || directoryExists(path + "/.git")` 과 같은 판정을 이미 읽은 목록에서 한다.
+    /// 끊어진 `.git` 링크는 둘 다 거짓이라 경계가 아니다.
+    private static func containsRepositoryMarker(_ entries: [DirectoryEntry]) -> Bool {
+        entries.contains { entry in
+            entry.path.hasSuffix("/.git") && (!entry.isSymbolicLink || entry.isDirectory || entry.isRegularFile)
+        }
     }
 }
 

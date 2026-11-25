@@ -397,6 +397,100 @@ struct SymlinkTraversalTests {
     }
 }
 
+@Suite("중첩 저장소 경계를 가르는 탐색")
+struct NestedRepositoryTraversalTests {
+    @Test("경계는 걸은 길로 정하고 .git 파일은 경계, 끊어진 .git 링크와 루트의 .git 은 경계가 아니다", .timeLimit(.minutes(1)))
+    func boundariesFollowTheWalkedPath() throws {
+        let base = try Self.makeDirectory("cartograph-nested-walk")
+        defer { Self.remove(base) }
+        let root = base + "/root"
+        let manager = FileManager.default
+        try Self.write("struct A {}", to: root + "/Sources/A.swift")
+        try manager.createDirectory(atPath: root + "/.git", withIntermediateDirectories: true)
+        // 서브모듈·중첩 저장소: `.git` 디렉터리.
+        try Self.write("struct X {}", to: root + "/Vendor/Lib/Sources/X.swift")
+        try Self.write("struct Inner {}", to: root + "/Vendor/Lib/Inner.swift")
+        try manager.createDirectory(atPath: root + "/Vendor/Lib/.git", withIntermediateDirectories: true)
+        // worktree: `.git` 파일.
+        try Self.write("struct W {}", to: root + "/Worktree/W.swift")
+        try Self.write("gitdir: /nowhere", to: root + "/Worktree/.git")
+        // 끊어진 `.git` 링크는 소스 발견의 `fileExists || directoryExists` 처럼 경계가 아니다.
+        try Self.write("struct B {}", to: root + "/Broken/B.swift")
+        try manager.createSymbolicLink(atPath: root + "/Broken/.git", withDestinationPath: base + "/missing")
+        // 저장소 루트 아래 디렉터리를 가리키는 루트 안 링크로는 경계 밖으로 걸어 들어간다.
+        try manager.createSymbolicLink(atPath: root + "/App", withDestinationPath: "Vendor/Lib/Sources")
+
+        let fileSystem = LocalFileSystem()
+        var flags: [String: Set<Bool>] = [:]
+        let files = fileSystem.recursiveFiles(
+            under: root, separatesNestedRepositories: true,
+            isIncluded: { path, insideNested in
+                flags[(path as NSString).lastPathComponent, default: []].insert(insideNested)
+                return path.hasSuffix(".swift")
+            },
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
+        )
+
+        #expect(flags["A.swift"] == [false])
+        #expect(flags["W.swift"] == [true])
+        #expect(flags["Inner.swift"] == [true])
+        #expect(flags["B.swift"] == [false])
+        // `Vendor/Lib/Sources` 는 경계 안에서도, `App` 링크로 경계 밖에서도 걷는다.
+        #expect(flags["X.swift"] == [false, true])
+        // 두 길로 걸어도 결과는 같은 파일을 한 번만 담는다.
+        #expect(files.count == Set(files).count)
+        #expect(files.count == 5)
+    }
+
+    @Test("경계를 넘는 링크 순환도 끝나고 같은 디렉터리와 링크를 콜백에 한 번만 알린다", .timeLimit(.minutes(1)))
+    func crossBoundaryCycleTerminatesAndReportsOnce() throws {
+        let base = try Self.makeDirectory("cartograph-nested-cycle")
+        defer { Self.remove(base) }
+        let root = base + "/root"
+        let manager = FileManager.default
+        try Self.write("struct A {}", to: root + "/Sources/A.swift")
+        try Self.write("struct Outside {}", to: base + "/outside/Outside.swift")
+        try manager.createSymbolicLink(atPath: root + "/Sources/ext", withDestinationPath: base + "/outside")
+        try manager.createDirectory(atPath: root + "/Nested/.git", withIntermediateDirectories: true)
+        // 중첩 저장소 안의 `up` 이 루트를 가리켜 루트 전체를 경계 안에서 한 번 더 걷는다.
+        try manager.createSymbolicLink(atPath: root + "/Nested/up", withDestinationPath: "..")
+        try manager.createSymbolicLink(atPath: root + "/Sources/back", withDestinationPath: "../Nested")
+
+        let fileSystem = LocalFileSystem()
+        var directories: [String] = []
+        var external: [String] = []
+        let files = fileSystem.recursiveFiles(
+            under: root, separatesNestedRepositories: true, isIncluded: { path, _ in path.hasSuffix(".swift") },
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:),
+            onDirectory: { directories.append($0) }, onExternalDirectoryLink: { external.append($0) }
+        )
+
+        #expect(files == [try fileSystem.realPath(at: root + "/Sources/A.swift")])
+        #expect(external == [try fileSystem.realPath(at: root + "/Sources") + "/ext"])
+        #expect(directories.count == Set(directories).count)
+    }
+
+    private static func makeDirectory(_ prefix: String) throws -> String {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("\(prefix)-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        return path
+    }
+
+    private static func remove(_ path: String) {
+        do { try FileManager.default.removeItem(atPath: path) } catch {
+            Issue.record("임시 디렉터리를 지우지 못했다: \(error)")
+        }
+    }
+
+    /// 중간 디렉터리까지 만들어 텍스트를 쓴다.
+    private static func write(_ text: String, to path: String) throws {
+        try FileManager.default.createDirectory(
+            atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true
+        )
+        try Data(text.utf8).write(to: URL(fileURLWithPath: path))
+    }
+}
+
 /// `/` 아래 디렉터리 링크 하나(`/Linked` → `/Target`)만 흉내 내는 파일 시스템.
 ///
 /// 실제 `/` 는 걸을 수 없으므로 포함 판정의 `/` 경계만 본다. `/` 에 `/` 를 덧붙인 `//` 접두사로 비교하면

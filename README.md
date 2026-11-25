@@ -1049,8 +1049,21 @@ non-ASCII strings. Empty expected values are allowed.
 Warm sessions cache file digests after checking device/inode, size, nanosecond modification and
 change times, permissions and resolved path. Filesystems without these stamps are rehashed.
 Sources and index-unit timestamps also participate in the input fingerprint so freshness reports
-are refreshed. File enumeration still occurs; this is cached preparation, not incremental graph
-analysis or an automatic compiler build.
+are refreshed. Sources, headers and Interface Builder or Core Data resources outside the
+`include`/`exclude` scope that this repository's Git ignores take part by path only (an ignored symbolic
+link also by its current target), because the `source-discovery-exclusions` limitation counts them:
+creating or deleting such a file, untracking and ignoring one, or retargeting an ignored link or
+removing its target starts a new generation. Files outside the scope that Git lists in this repository
+do not, and neither do files outside the scope that are only reached through a nested repository,
+submodule or worktree (a directory with its own `.git`, which discovery does not enter and whose `.git`
+entry the fingerprint watches). A file in such a repository that is also reached through an in-root
+directory link to a directory below that repository's root is counted by discovery and fingerprinted; a
+link to the repository root itself is skipped like the repository, because its `.git` exists. Files
+inside the scope are
+fingerprinted by content even inside a nested repository, although discovery skips them, so editing one
+starts a generation that is not needed. An ignored link that was already broken when its directory was
+last listed is not noticed when its target appears until that directory changes. File enumeration still
+occurs; this is cached preparation, not incremental graph analysis or an automatic compiler build.
 
 Within one generation the analysis limitations, the `cartograph_check` result and the test
 lifecycle and name/file indexes behind `cartograph_impact` and `cartograph_affected` are computed

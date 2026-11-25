@@ -500,6 +500,37 @@ extension CartographService {
     }
 }
 
+/// 지문 탐색이 파일 하나를 어떻게 다루는지.
+fileprivate enum WalkInclusion {
+    /// 결과 목록에 넣는다. 같은 파일을 가리키는 두 이름 중 먼저 걸은 것만 남는다.
+    case listed
+    /// 결과 목록에 넣지 않고 범위 밖 후보로 따로 모은다.
+    case outsideScope
+    /// 지문과 무관하다.
+    case skipped
+}
+
+/// include/exclude 밖의 소스 후보 하나.
+fileprivate struct OutsideScopeCandidate: Equatable {
+    /// 탐색이 본 철자.
+    let path: String
+    /// 항목 자체가 심볼릭 링크인지. 링크 재지정은 부모 디렉터리 지문에 드러나지 않아 지문마다 대상을 다시 푼다.
+    let isSymbolicLink: Bool
+}
+
+/// 지문 탐색 하나의 결과.
+fileprivate struct WalkedFiles {
+    /// 결과 목록(정렬).
+    let paths: [String]
+    /// include/exclude 밖의 소스 후보(경로 정렬, 중복 없음). 결과 목록과 겹치지 않고, 걸은 길로 루트 아닌 저장소 경계
+    /// 아래인 것은 뺐다.
+    let outsideScope: [OutsideScopeCandidate]
+    /// 루트 밖이라 따라가지 않은 디렉터리 링크.
+    let externalLinks: [String]
+    /// 탐색한 디렉터리의 `.git` 항목(정렬).
+    let repositoryBoundaries: [String]
+}
+
 /// 세션이 순서대로 재사용하는 변경 감지 상태.
 ///
 /// 오늘의 호출 경로는 전부 직렬이지만(CLI·MCP 루프) `Sendable` 경계를 넘는
@@ -524,11 +555,11 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [Key: Entry] = [:]
 
-    /// 소스 탐색의 `isIncluded` 판정 메모. 판정은 경로와 필터만의 순수 함수이므로
+    /// 소스 탐색의 파일 분류 메모. 분류는 경로와 필터만의 순수 함수이므로
     /// 지문 계산마다 되풀이할 필요가 없다 — 실측에서 요청당 수백 번의 글롭 대조가
     /// 지문 비용의 큰 부분이었다. 사라진 경로의 판정은 다시 조회되지 않아 무해하므로
     /// 항목 수는 세션 동안 본 경로 수로 한정된다 — 가지치기 대상이 아니다.
-    private var inclusions: [String: Bool] = [:]
+    private var inclusions: [String: WalkInclusion] = [:]
     private var inclusionFilter: PathFilter?
 
     /// 지문 한 번에 관측한 디렉터리. 가지치기 기준이며 다음 지문 시작 때 비운다.
@@ -564,14 +595,14 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         }
     }
 
-    /// 저장된 포함 판정을 돌려준다.
-    fileprivate func inclusion(for path: String) -> Bool? {
+    /// 저장된 분류를 돌려준다.
+    fileprivate func inclusion(for path: String) -> WalkInclusion? {
         lock.lock()
         defer { lock.unlock() }
         return inclusions[path]
     }
 
-    fileprivate func storeInclusion(_ included: Bool, for path: String) {
+    fileprivate func storeInclusion(_ included: WalkInclusion, for path: String) {
         lock.lock()
         defer { lock.unlock() }
         // 오래 사는 세션에서 삭제된 경로의 판정이 무한히 쌓이지 않게 상한을 둔다.
@@ -624,7 +655,7 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
     /// 같은 필터로 만든 결과일 때만 돌려준다.
     fileprivate func walkedResult(
         root: String, filter: PathFilter?, fileSystem: any FileSystem
-    ) -> (paths: [String], externalLinks: [String], repositoryBoundaries: [String])? {
+    ) -> WalkedFiles? {
         lock.lock()
         let record = walks[root]
         lock.unlock()
@@ -645,7 +676,8 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
             observedDirectories.insert(directory)
         }
         lock.unlock()
-        return (record.result, record.externalLinks, record.repositoryBoundaries)
+        return WalkedFiles(paths: record.result, outsideScope: record.outsideScope,
+            externalLinks: record.externalLinks, repositoryBoundaries: record.repositoryBoundaries)
     }
 
     /// 탐색 결과를 루트와 필터에 묶어 둔다. 열거한 디렉터리 중 지문이 없거나
@@ -655,7 +687,8 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
     fileprivate func storeWalk(
         root: String, filter: PathFilter?, directories walked: [String],
         discardedLinks: [String], externalLinks: [String], repositoryBoundaries: [String],
-        repositoryBoundaryLinks: [String], result: [String], fileSystem: any FileSystem
+        repositoryBoundaryLinks: [String], result: [String], outsideScope: [OutsideScopeCandidate],
+        fileSystem: any FileSystem
     ) {
         guard let resolvedRoot = walked.first else { return }
         lock.lock()
@@ -685,7 +718,7 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         lock.lock()
         walks[root] = WalkRecord(
             filter: filter, dirStamps: dirStamps, linkStamps: linkStamps, result: result,
-            externalLinks: externalLinks, repositoryBoundaries: repositoryBoundaries
+            outsideScope: outsideScope, externalLinks: externalLinks, repositoryBoundaries: repositoryBoundaries
         )
         lock.unlock()
     }
@@ -721,6 +754,11 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         /// 링크의 지문. 부모 디렉터리 지문에는 재지정이 드러나지 않으므로 따로 검증한다.
         let linkStamps: [(String, FileFingerprintStamp)]
         let result: [String]
+        /// 결과 목록에 넣지 않은 범위 밖 소스 후보(정렬). 결과를 재사용할 때도 Git 목록과 다시 대조한다.
+        ///
+        /// 추적 여부는 탐색 없이 바뀌므로(`git add -f`, `git rm --cached`) Git 목록에 있는 후보도 남긴다. 그래서 크기는 범위 밖
+        /// 후보 수에 비례하고, 지문마다 후보 하나당 집합 조회 하나를 한다. 걸은 길로 루트 아닌 저장소 경계 아래인 후보는 탐색 때 뺀다.
+        let outsideScope: [OutsideScopeCandidate]
         /// 따라가지 않은 루트 밖 디렉터리 링크. 결과를 재사용할 때도 지문에 다시 싣는다.
         let externalLinks: [String]
         /// 중첩 .git 항목의 존재는 소스 내용이 같아도 분석 범위를 바꾼다.
@@ -873,23 +911,29 @@ private struct AnalysisInputFingerprinter {
         cache: AnalysisInputFingerprintCache?,
         observedKeys: inout Set<AnalysisInputFingerprintCache.Key>
     ) throws {
-        addGitSourceSelection(to: &accumulator)
+        let gitPaths = addGitSourceSelection(to: &accumulator)
         cache?.prepareInclusion(filter: configuration.pathFilter)
         // 탐색 결과를 열거 디렉터리 전체의 지문으로 묶어 둔다 — 구조가 그대로면
         // 다음 지문에서 글롭 대조·디렉터리 열거 없이 경로 목록을 재사용한다.
-        let (paths, externalLinks, repositoryBoundaries) = walk(
+        let walked = walk(
             root: projectPath, filter: configuration.pathFilter, cache: cache,
-            isIncluded: { path in
+            classify: { path in
                 if let cached = cache?.inclusion(for: path) { return cached }
-                let included = Self.isSourceInput(path, filter: configuration.pathFilter)
-                cache?.storeInclusion(included, for: path)
-                return included
+                let inclusion = Self.sourceInclusion(path, filter: configuration.pathFilter)
+                cache?.storeInclusion(inclusion, for: path)
+                return inclusion
             },
             shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )
+        let paths = walked.paths
         accumulator.addText("source-count:\(paths.count)")
-        Self.addExternalLinks(externalLinks, to: &accumulator)
-        for path in repositoryBoundaries { accumulator.addText("source-repository-boundary:\(path)") }
+        Self.addExternalLinks(walked.externalLinks, to: &accumulator)
+        for path in walked.repositoryBoundaries { accumulator.addText("source-repository-boundary:\(path)") }
+        // 범위 밖 파일은 내용을 읽지 않으므로 경로만 싣는다. 이런 파일이 없으면 아무것도 싣지 않아 지문이 그대로다.
+        for candidate in Self.gitExcluded(walked.outsideScope, gitPaths: gitPaths) {
+            accumulator.addText("git-excluded-outside-scope:\(candidate.path)")
+            if candidate.isSymbolicLink { accumulator.addText(linkTarget(of: candidate.path)) }
+        }
         for path in paths {
             // 내용이 같아도 소스 시각은 인덱스 신선도 결과에 영향을 준다.
             try addFile(path, label: "source-file", includeModificationDate: true, isDiscoveredInput: true,
@@ -899,39 +943,83 @@ private struct AnalysisInputFingerprinter {
 
     /// Git 선택 결과를 묶어 ignore/info-exclude/tracked 상태 변화가 낡은 문맥을 재사용하지 못하게 한다.
     /// 전체 소스 walk는 기존 캐시를 쓰고, Git의 유한한 경로 목록만 새로 읽는다.
-    private func addGitSourceSelection(to accumulator: inout FingerprintAccumulator) {
+    ///
+    /// 선택한 경로 전체를 돌려준다. 범위 밖 후보 중 Git 이 고르지 않은 것을 가려낼 때 쓴다. 선택하지 못했으면 nil 이다.
+    private func addGitSourceSelection(to accumulator: inout FingerprintAccumulator) -> Set<String>? {
         let fileSystem = (environment.fileSystem as? CachedListingFileSystem)?.base ?? environment.fileSystem
         let selection = GitSourceSelection.select(fileSystem: fileSystem, projectPath: projectPath)
         guard let inventory = selection.inventory else {
             accumulator.addText("git-source-selection:unavailable")
-            return
+            return nil
         }
         accumulator.addText("git-source-selection:available")
         for path in inventory.paths.sorted() where Self.isSourceInput(path, filter: configuration.pathFilter) {
             accumulator.addText("git-source-path:\(path)")
         }
+        return inventory.paths
+    }
+
+    /// 범위 밖 후보 중 Git 목록에 없는 것(무시된 파일). Git 선택을 못 했으면 빈 목록이다.
+    ///
+    /// 한계의 `source-discovery-exclusions` 는 include/exclude 와 무관하게 Git 이 무시한 후보를 전부 세고, 그중
+    /// 범위 밖 무시 소스는 따로 센다(`ProjectFileInventory`). 범위 안 경로만 지문에 실으면 범위 밖 무시 파일의 생성·삭제나
+    /// 추적 해제가 세대를 바꾸지 못해, 세션이 낡은 개수와 경로를 계속 싣는다. 루트 아닌 저장소 경계 아래로 걸은
+    /// 후보는 탐색이 이미 뺐다(`recursiveFiles(separatesNestedRepositories:)`). 범위 밖이어도 Git 목록에 있는 파일은
+    /// 한계에 들어가지 않으므로 싣지 않는다 — 실으면 분석과 무관한 편집이 세션을 다시 준비시킨다. Git 선택이 실패하면
+    /// 인벤토리도 무시 파일을 가려내지 않으므로 실을 것이 없다. 목록 대조는 지문마다 한다 — `git add -f` 처럼 작업
+    /// 트리를 건드리지 않는 변화는 탐색 캐시를 그대로 둔다.
+    private static func gitExcluded(
+        _ outsideScope: [OutsideScopeCandidate], gitPaths: Set<String>?
+    ) -> [OutsideScopeCandidate] {
+        guard let gitPaths else { return [] }
+        return outsideScope.filter { !gitPaths.contains($0.path) }
+    }
+
+    /// 범위 밖 무시 링크가 지금 가리키는 실제 경로. 대상이 없거나 일반 파일이 아니면 `missing` 이다.
+    ///
+    /// 무시 링크가 Git 이 고른 소스를 가리키면 범위 밖 무시 소스로 세지 않는다(`IgnoredSourceReferences.untrackedSources`).
+    /// 재지정(`ln -sfn`)이나 대상 삭제는 링크 경로도 부모 디렉터리 지문도 바꾸지 않으므로, 대상을 싣지 않으면 그 개수가
+    /// 바뀌어도 세대가 그대로다. 대상의 추적 여부는 대상 경로 쪽 항목(범위 안 Git 목록, 범위 밖 무시 경로)이 맡는다.
+    private func linkTarget(of path: String) -> String {
+        guard let stamp = environment.fileSystem.fingerprintStamp(at: path), stamp.isRegularFile else {
+            return "git-excluded-outside-scope-link:missing"
+        }
+        return "git-excluded-outside-scope-link:\(stamp.resolvedPath)"
     }
 
     /// 세션 입력에 들어가는 소스·리소스 경로 판정.
+    private static func isSourceInput(_ path: String, filter: PathFilter) -> Bool {
+        isSourceCandidate(path) && filter.allows(path)
+    }
+
+    /// 탐색이 파일 하나를 어떻게 다루는지.
     ///
-    /// 글롭 대조와 리소스 판정(URL 생성)은 항목당 비싸므로 이름으로 먼저 좁힌다.
+    /// 범위 밖 후보는 결과 목록에 넣지 않는다. 넣으면 같은 파일을 가리키는 두 이름 중 먼저 걸은 것만 남기는 탐색
+    /// 규칙 때문에, 범위 밖 링크(`Link.generated.swift -> main.swift`)가 범위 안 원본을 목록에서 밀어내 그 내용이
+    /// 지문에서 빠진다. 그래서 따로 모으고, 범위 안 목록은 이전과 같게 둔다.
+    private static func sourceInclusion(_ path: String, filter: PathFilter) -> WalkInclusion {
+        guard isSourceCandidate(path) else { return .skipped }
+        return filter.allows(path) ? .listed : .outsideScope
+    }
+
+    /// 범위와 무관하게 소스·헤더·런타임 리소스인지. `ProjectFileInventory` 가 Git 목록과 대조하는 후보와 같은 집합이다.
+    ///
+    /// 리소스 판정(URL 생성)은 항목당 비싸므로 이름으로 먼저 좁힌다.
     /// 소스 접미사는 대소문자 구분 그대로, 리소스는 이름 게이트 뒤에 원래의 정밀
     /// 판정을 부른다 — `xcdatamodel` 밖의 일반 `contents` 는 계속 빠져야 한다.
-    private static func isSourceInput(_ path: String, filter: PathFilter) -> Bool {
+    private static func isSourceCandidate(_ path: String) -> Bool {
         let name = (path as NSString).lastPathComponent
         let ext = (path as NSString).pathExtension
         if ext == "swift" || ext == "m" || ext == "mm" || ext == "h"
             || name == ".swift" || name == ".m" || name == ".mm" || name == ".h" {
-            return filter.allows(path)
+            return true
         }
         let lowerName = name.lowercased()
         let resourceCandidate = ext.lowercased() == "xib"
             || ext.lowercased() == "storyboard"
             || lowerName == ".xib" || lowerName == ".storyboard"
             || lowerName == "contents" || name == ".xccurrentversion"
-        return resourceCandidate
-            && RuntimeResourcePath.isSupported(path)
-            && filter.allows(path)
+        return resourceCandidate && RuntimeResourcePath.isSupported(path)
     }
 
     /// 이전 탐색 결과를 재사용하거나 새로 걷고 저장한다. 따라가지 않은 루트 밖 디렉터리 링크도 돌려준다.
@@ -940,26 +1028,62 @@ private struct AnalysisInputFingerprinter {
     /// 감시해야 재지정이 디렉터리 지문에 드러나지 않아도 다음 지문이 다시 걷는다.
     private func walk(
         root: String, filter: PathFilter?, cache: AnalysisInputFingerprintCache?,
-        isIncluded: (String) -> Bool, shouldDescend: (String) -> Bool
-    ) -> (paths: [String], externalLinks: [String], repositoryBoundaries: [String]) {
+        classify: (String) -> WalkInclusion, shouldDescend: (String) -> Bool
+    ) -> WalkedFiles {
         let fileSystem = environment.fileSystem
         if let cached = cache?.walkedResult(root: root, filter: filter, fileSystem: fileSystem) { return cached }
         var walked: [String] = []
         var discardedLinks: [String] = []
         var externalLinks: [String] = []
+        var outsideScope: [String] = []
+        // 소스 루트는 소스 발견처럼 루트가 아닌 저장소 경계 아래를 가린다. 그 아래 범위 밖 후보는 발견이 세지 않는다.
         let paths = fileSystem.recursiveFiles(
-            under: root, isIncluded: isIncluded, shouldDescend: shouldDescend,
+            under: root, separatesNestedRepositories: filter != nil,
+            isIncluded: { path, insideNestedRepository in
+                switch classify(path) {
+                case .listed: return true
+                case .outsideScope:
+                    if !insideNestedRepository { outsideScope.append(path) }
+                    return false
+                case .skipped: return false
+                }
+            },
+            shouldDescend: shouldDescend,
             onDirectory: { walked.append($0) }, onDiscardedLink: { discardedLinks.append($0) },
             onExternalDirectoryLink: { externalLinks.append($0) }
         )
         let markers = filter == nil ? (paths: [String](), links: [String]())
             : repositoryMarkers(in: walked, cache: cache)
+        // 같은 실제 디렉터리를 두 길로 걸으면 같은 철자가 두 번 모인다.
+        let candidates = outsideScopeCandidates(Array(Set(outsideScope)).sorted())
         cache?.storeWalk(
             root: root, filter: filter, directories: walked, discardedLinks: discardedLinks,
             externalLinks: externalLinks, repositoryBoundaries: markers.paths,
-            repositoryBoundaryLinks: markers.links, result: paths, fileSystem: fileSystem
+            repositoryBoundaryLinks: markers.links, result: paths, outsideScope: candidates, fileSystem: fileSystem
         )
-        return (paths, externalLinks, markers.paths)
+        return WalkedFiles(paths: paths, outsideScope: candidates, externalLinks: externalLinks,
+            repositoryBoundaries: markers.paths)
+    }
+
+    /// 범위 밖 후보마다 항목 자체가 심볼릭 링크인지 붙인다. 탐색을 새로 할 때만 부른다.
+    ///
+    /// 세션 캐시가 있으면 방금 탐색이 읽은 디렉터리 목록을 다시 쓴다(디렉터리마다 지문 확인 stat 하나). 캐시가 없으면
+    /// 후보가 있는 디렉터리를 한 번씩 다시 읽는다. 목록에서 찾지 못한 항목은 링크로 다룬다 — 대상을 한 번 더 푸는
+    /// 비용뿐이고, 링크를 놓치면 재지정을 못 본다.
+    private func outsideScopeCandidates(_ paths: [String]) -> [OutsideScopeCandidate] {
+        var linksByDirectory: [String: [String: Bool]] = [:]
+        var candidates: [OutsideScopeCandidate] = []
+        for path in paths {
+            let directory = (path as NSString).deletingLastPathComponent
+            if linksByDirectory[directory] == nil {
+                let entries = (try? environment.fileSystem.directoryEntries(at: directory)) ?? []
+                linksByDirectory[directory] = Dictionary(
+                    entries.map { ($0.path, $0.isSymbolicLink) }, uniquingKeysWith: { $0 || $1 })
+            }
+            candidates.append(OutsideScopeCandidate(
+                path: path, isSymbolicLink: linksByDirectory[directory]?[path] ?? true))
+        }
+        return candidates
     }
 
     /// 캐시된 디렉터리 항목에서 경계를 얻는다. warm 조회는 walk 결과와 경계 목록을 함께 재사용한다.
@@ -985,7 +1109,8 @@ private struct AnalysisInputFingerprinter {
                 }
             }
         }
-        return (paths.sorted(), links.sorted())
+        // 같은 실제 디렉터리를 경계 안팎 두 길로 걸으면 같은 디렉터리가 두 번 나온다.
+        return (Array(Set(paths)).sorted(), Array(Set(links)).sorted())
     }
 
     /// 따라가지 않은 루트 밖 디렉터리 링크를 지문에 싣는다. 링크가 없으면 아무것도 싣지 않아 지문이 그대로다.
@@ -1043,12 +1168,12 @@ private struct AnalysisInputFingerprinter {
                 } else {
                     accumulator.addText("index-unit-root-modified:unknown")
                 }
-                let (paths, externalLinks, _) = walk(
-                    root: root, filter: nil, cache: cache, isIncluded: { _ in true }, shouldDescend: { _ in true }
+                let walked = walk(
+                    root: root, filter: nil, cache: cache, classify: { _ in .listed }, shouldDescend: { _ in true }
                 )
-                accumulator.addText("index-unit-count:\(paths.count)")
-                Self.addExternalLinks(externalLinks, to: &accumulator)
-                for path in paths {
+                accumulator.addText("index-unit-count:\(walked.paths.count)")
+                Self.addExternalLinks(walked.externalLinks, to: &accumulator)
+                for path in walked.paths {
                     // 유닛 이름은 컴파일러가 출력 오브젝트 이름으로 짓는다. 파일별 컴파일에서
                     // `Config/.env.swift` 의 유닛은 `.env.o-<hash>` 가 되므로 탐색 입력처럼 다룬다.
                     try addFile(
