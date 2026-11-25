@@ -1050,11 +1050,14 @@ Warm sessions cache file digests after checking device/inode, size, nanosecond m
 change times, permissions and resolved path. Filesystems without these stamps are rehashed.
 Sources and index-unit timestamps also participate in the input fingerprint so freshness reports
 are refreshed. Sources, headers and Interface Builder or Core Data resources outside the
-`include`/`exclude` scope that Git does not list (ignored files, and files inside a nested repository)
-take part by path only, because the `source-discovery-exclusions` limitation counts the ignored ones:
-creating or deleting such a file, or untracking and ignoring one, starts a new generation. Tracked or
-untracked-but-not-ignored files outside the scope do not. File enumeration still occurs; this is
-cached preparation, not incremental graph analysis or an automatic compiler build.
+`include`/`exclude` scope that this repository's Git ignores take part by path only (an ignored symbolic
+link also by its current target), because the `source-discovery-exclusions` limitation counts them:
+creating or deleting such a file, untracking and ignoring one, or retargeting an ignored link or
+removing its target starts a new generation. Files outside the scope that Git lists in this repository
+do not, and neither do files inside nested repositories, submodules or worktrees, whose `.git` entry
+is what the fingerprint watches. An ignored link that was already broken when its directory was last
+listed is not noticed when its target appears until that directory changes. File enumeration still
+occurs; this is cached preparation, not incremental graph analysis or an automatic compiler build.
 
 Within one generation the analysis limitations, the `cartograph_check` result and the test
 lifecycle and name/file indexes behind `cartograph_impact` and `cartograph_affected` are computed

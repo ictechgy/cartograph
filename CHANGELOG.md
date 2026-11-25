@@ -75,13 +75,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   files on both sides, so a long-lived session kept answering with the old count, path list and
   outside-scope sentence until some other input changed. For example, a newly ignored `R.generated.swift`
   under the default `**/*.generated.swift` exclude was missing from every session response but present in
-  a fresh CLI run. Such files contribute their paths only (their contents are not read); files inside a
-  nested repository outside the scope are included too, which can start a new generation that the
-  limitation (it counts the repository once) does not need. Tracked files outside the scope still do not
-  refresh a session. Projects without such files keep the same fingerprint. **Upgrade note:** in projects
-  that have them, a target-scope capture for `affected --target-scope` recorded by an earlier version no
-  longer matches the input fingerprint and is treated like any stale capture; capture it again. The
-  reason of a failed Git selection is still not part of the fingerprint.
+  a fresh CLI run. Such files contribute their paths only (their contents are not read), and an ignored
+  symbolic link also contributes its current target, so retargeting it or removing its target starts a new
+  generation as well: whether the link counts depends on whether its target is a source Git lists. A link
+  that was already broken when its directory was last listed is still not noticed when its target appears,
+  until that directory changes. Files outside the scope that Git lists in this repository, and files inside
+  nested repositories, submodules or worktrees (the limitation counts each of those as one excluded
+  directory, and the fingerprint already watched its `.git` entry), still do not refresh a session.
+  Projects without such files keep the same fingerprint. **Upgrade note:** in projects that have them, a
+  target-scope capture for `affected --target-scope` recorded by an earlier version no longer matches the
+  input fingerprint and is treated like any stale capture; capture it again. The reason of a failed Git
+  selection is still not part of the fingerprint.
 - When Git source selection fails inside a repository (5-second limit, 16 MiB output budget, or a Git
   error such as a corrupt index), analysis responses now carry a `source-discovery-git-unavailable`
   limitation with the reason. The fallback walks every source, including Git-ignored files, so the same

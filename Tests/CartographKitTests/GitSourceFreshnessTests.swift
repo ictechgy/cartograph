@@ -91,9 +91,21 @@ struct GitSourceFreshnessTests {
         #expect(outsideScopeSentence(in: created)?.contains(" 1 ignored source file(s) are outside") == true)
         #expect(created.limitations == (try freshLimitations(service)))
 
+        // 작업 트리는 그대로 두고 Git 상태만 바꾼다. 디렉터리 지문이 그대로라 탐색 캐시를 다시 쓰는 단계다 —
+        // Git 목록과의 대조를 탐색 결과와 함께 캐시하면 여기서 세대가 그대로 남는다.
+        try git(root: physical, ["add", "-f", "R.generated.swift"])
+        let forced = try session.status()
+        #expect(forced.generation == created.generation + 1)
+        #expect(outsideScopeSentence(in: forced) == nil)
+        #expect(forced.limitations == (try freshLimitations(service)))
+        try git(root: physical, ["rm", "-q", "--cached", "R.generated.swift"])
+        let ignoredAgain = try session.status()
+        #expect(ignoredAgain.generation == forced.generation + 1)
+        #expect(ignoredAgain.limitations == created.limitations)
+
         try fs.removeItem(at: physical + "/R.generated.swift")
         let removed = try session.status()
-        #expect(removed.generation == created.generation + 1)
+        #expect(removed.generation == ignoredAgain.generation + 1)
         #expect(removed.limitations == first.limitations)
 
         // 범위 밖이어도 Git 이 고른 파일은 한계에 들어가지 않으므로 세션을 다시 준비시키지 않는다.
@@ -143,6 +155,104 @@ struct GitSourceFreshnessTests {
 
         try fs.write(text: "struct Zone { let edited = 1 }", to: physical + "/Zone.swift")
         #expect(try session.status().generation == first.generation + 1)
+    }
+
+    @Test("범위 밖 무시 링크의 대상을 바꾸거나 대상이 사라지면 세대가 바뀌고 한계가 새 세션과 같다")
+    func retargetedIgnoredLinkOutsideScopeRefreshesSession() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("cartograph-git-retarget-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            do { try FileManager.default.removeItem(at: root) }
+            catch { Issue.record("임시 Git 프로젝트 정리 실패: \(error)") }
+        }
+        let fs = LocalFileSystem()
+        let physical = try fs.realPath(at: root.path)
+        try git(root: physical, ["init", "-q"])
+        try fs.write(text: "struct Zone {}", to: physical + "/Zone.swift")
+        try fs.write(text: "enum Other {}", to: physical + "/Other.generated.swift")
+        // `.build` 는 탐색이 걷지 않는다. 그 안의 생성 파일을 가리키는 링크의 대상이 사라져도 루트 목록은 그대로다.
+        try fs.write(text: "enum Plugin {}", to: physical + "/.build/Plugin.swift")
+        try fs.write(text: "*.generated.swift\n.build/\n", to: physical + "/.gitignore")
+        let alias = physical + "/Alias.generated.swift"
+        try FileManager.default.createSymbolicLink(atPath: alias, withDestinationPath: "Zone.swift")
+        try FileManager.default.createSymbolicLink(
+            atPath: physical + "/Build.generated.swift", withDestinationPath: ".build/Plugin.swift")
+        var builder = SnapshotBuilder(path: physical + "/Zone.swift")
+        builder.symbol("Zone", kind: .structType)
+        let service = CartographService(
+            configuration: .init(indexStorePath: physical + "/index", projectPath: physical),
+            environment: .init(
+                fileSystem: fs, indexProviderOverride: StaticIndexProvider(builder.build()), usesSyntaxCache: false
+            )
+        )
+        let session = try AnalysisSession(service: service)
+        let first = try session.status()
+        // Git 이 고른 Zone.swift 를 가리키는 링크는 세지 않는다. Other 와 .build 를 가리키는 링크만 센다.
+        #expect(outsideScopeSentence(in: first)?.contains(" 2 ignored source file(s) are outside") == true)
+
+        // 링크 경로 집합은 그대로이고 대상만 무시 파일로 바뀐다.
+        try fs.removeItem(at: alias)
+        try FileManager.default.createSymbolicLink(atPath: alias, withDestinationPath: "Other.generated.swift")
+        let retargeted = try session.status()
+        #expect(retargeted.generation == first.generation + 1)
+        #expect(outsideScopeSentence(in: retargeted)?.contains(" 3 ignored source file(s) are outside") == true)
+        #expect(retargeted.limitations == (try freshLimitations(service)))
+
+        try fs.removeItem(at: physical + "/.build/Plugin.swift")
+        let dangling = try session.status()
+        #expect(dangling.generation == retargeted.generation + 1)
+        #expect(dangling.limitations == (try freshLimitations(service)))
+
+        try fs.write(text: "enum Plugin {}", to: physical + "/.build/Plugin.swift")
+        let restored = try session.status()
+        #expect(restored.generation == dangling.generation + 1)
+        #expect(restored.limitations == retargeted.limitations)
+    }
+
+    @Test("범위 밖 중첩 저장소와 worktree 안의 파일 편집은 세대를 바꾸지 않고 범위 밖 무시 파일은 바꾼다")
+    func nestedRepositoriesOutsideScopeDoNotRefreshSession() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("cartograph-git-nested-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            do { try FileManager.default.removeItem(at: root) }
+            catch { Issue.record("임시 Git 프로젝트 정리 실패: \(error)") }
+        }
+        let fs = LocalFileSystem()
+        let physical = try fs.realPath(at: root.path)
+        try git(root: physical, ["init", "-q"])
+        try fs.write(text: "struct App {}", to: physical + "/Sources/App.swift")
+        try fs.write(text: "Scratch.swift\n", to: physical + "/.gitignore")
+        try git(root: physical, ["add", "-A"])
+        try git(root: physical, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "base"])
+        // Git 목록은 worktree·중첩 저장소를 디렉터리 하나로만 내고 그 안의 파일은 내지 않는다.
+        try git(root: physical, ["worktree", "add", "-q", ".claude/worktrees/w1"])
+        try fs.write(text: "struct Lib {}", to: physical + "/Vendor/Lib/Lib.swift")
+        try git(root: physical + "/Vendor/Lib", ["init", "-q"])
+        var builder = SnapshotBuilder(path: physical + "/Sources/App.swift")
+        builder.symbol("App", kind: .structType)
+        let service = CartographService(
+            configuration: .init(indexStorePath: physical + "/index", projectPath: physical, include: ["Sources/**"]),
+            environment: .init(
+                fileSystem: fs, indexProviderOverride: StaticIndexProvider(builder.build()), usesSyntaxCache: false
+            )
+        )
+        let session = try AnalysisSession(service: service)
+        let first = try session.status()
+
+        try fs.write(text: "struct New {}", to: physical + "/.claude/worktrees/w1/Sources/New.swift")
+        try fs.write(text: "struct More {}", to: physical + "/Vendor/Lib/More.swift")
+        let edited = try session.status()
+        #expect(edited.generation == first.generation)
+        #expect(edited.limitations == (try freshLimitations(service)))
+        try fs.removeItem(at: physical + "/.claude/worktrees/w1/Sources/App.swift")
+        #expect(try session.status().generation == first.generation)
+
+        // 대조군: 같은 범위 밖이라도 이 저장소가 무시한 파일은 한계가 세므로 새 세대를 만든다.
+        try fs.write(text: "struct Scratch {}", to: physical + "/Tools/Scratch.swift")
+        let ignored = try session.status()
+        #expect(ignored.generation == first.generation + 1)
+        #expect(outsideScopeSentence(in: ignored)?.contains(" 1 ignored source file(s) are outside") == true)
+        #expect(ignored.limitations == (try freshLimitations(service)))
     }
 
     /// `source-discovery-exclusions` 한계에서 범위 밖 무시 소스 문장이 있으면 그 한계 전체를 돌려준다.
