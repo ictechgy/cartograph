@@ -1054,9 +1054,13 @@ are refreshed. Sources, headers and Interface Builder or Core Data resources out
 link also by its current target), because the `source-discovery-exclusions` limitation counts them:
 creating or deleting such a file, untracking and ignoring one, or retargeting an ignored link or
 removing its target starts a new generation. Files outside the scope that Git lists in this repository
-do not, and neither do files inside nested repositories, submodules or worktrees, whose `.git` entry
-is what the fingerprint watches. An ignored link that was already broken when its directory was last
-listed is not noticed when its target appears until that directory changes. File enumeration still
+do not, and neither do files outside the scope that are only reached through a nested repository,
+submodule or worktree (a directory with its own `.git`, which discovery does not enter and whose `.git`
+entry the fingerprint watches). A file in such a repository that is also reached through an in-root
+directory link from outside it is counted by discovery and fingerprinted. Files inside the scope are
+fingerprinted by content even inside a nested repository, although discovery skips them, so editing one
+starts a generation that is not needed. An ignored link that was already broken when its directory was
+last listed is not noticed when its target appears until that directory changes. File enumeration still
 occurs; this is cached preparation, not incremental graph analysis or an automatic compiler build.
 
 Within one generation the analysis limitations, the `cartograph_check` result and the test

@@ -255,6 +255,53 @@ struct GitSourceFreshnessTests {
         #expect(ignored.limitations == (try freshLimitations(service)))
     }
 
+    @Test("중첩 저장소 안을 가리키는 루트 안 디렉터리 링크로 걸은 범위 밖 파일은 소스 발견처럼 지문에 남는다")
+    func directoryLinkIntoNestedRepositoryKeepsCountedFiles() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("cartograph-git-nested-link-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            do { try FileManager.default.removeItem(at: root) }
+            catch { Issue.record("임시 Git 프로젝트 정리 실패: \(error)") }
+        }
+        let fs = LocalFileSystem()
+        let physical = try fs.realPath(at: root.path)
+        try git(root: physical, ["init", "-q"])
+        try fs.write(text: "struct Main {}", to: physical + "/App/Main.swift")
+        try fs.write(text: "struct X {}", to: physical + "/Vendor/Lib/Sources/X.swift")
+        try fs.write(text: "struct Other {}", to: physical + "/Vendor/Lib/Other.swift")
+        try git(root: physical + "/Vendor/Lib", ["init", "-q"])
+        // 소스 발견은 `Vendor/Lib` 로는 내려가지 않지만 이 링크로는 내려간다(`App/Lib/.git` 이 없다). 자식은 실제 경로
+        // `Vendor/Lib/Sources/X.swift` 로 적히고 바깥 Git 목록에 없으므로 범위 밖 무시 소스로 센다.
+        try FileManager.default.createSymbolicLink(
+            atPath: physical + "/App/Lib", withDestinationPath: "../Vendor/Lib/Sources")
+        var builder = SnapshotBuilder(path: physical + "/App/Main.swift")
+        builder.symbol("Main", kind: .structType)
+        let service = CartographService(
+            configuration: .init(indexStorePath: physical + "/index", projectPath: physical, include: ["App/**"]),
+            environment: .init(
+                fileSystem: fs, indexProviderOverride: StaticIndexProvider(builder.build()), usesSyntaxCache: false
+            )
+        )
+        let session = try AnalysisSession(service: service)
+        let first = try session.status()
+        #expect(outsideScopeSentence(in: first)?.contains(" 1 ignored source file(s) are outside") == true)
+
+        try fs.write(text: "struct Y {}", to: physical + "/Vendor/Lib/Sources/Y.swift")
+        let added = try session.status()
+        #expect(added.generation == first.generation + 1)
+        #expect(outsideScopeSentence(in: added)?.contains(" 2 ignored source file(s) are outside") == true)
+        #expect(added.limitations == (try freshLimitations(service)))
+
+        try fs.removeItem(at: physical + "/Vendor/Lib/Sources/Y.swift")
+        let removed = try session.status()
+        #expect(removed.generation == added.generation + 1)
+        #expect(removed.limitations == first.limitations)
+
+        // 링크로 닿지 않는 중첩 저장소 안 파일은 발견이 세지 않으므로 세대를 바꾸지 않는다.
+        try fs.write(text: "struct More {}", to: physical + "/Vendor/Lib/More.swift")
+        #expect(try session.status().generation == removed.generation)
+    }
+
     /// `source-discovery-exclusions` 한계에서 범위 밖 무시 소스 문장이 있으면 그 한계 전체를 돌려준다.
     private func outsideScopeSentence(in metadata: AnalysisSession.Metadata) -> String? {
         metadata.limitations.first {

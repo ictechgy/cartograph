@@ -522,7 +522,8 @@ fileprivate struct OutsideScopeCandidate: Equatable {
 fileprivate struct WalkedFiles {
     /// 결과 목록(정렬).
     let paths: [String]
-    /// include/exclude 밖의 소스 후보(경로 정렬). 결과 목록과 겹치지 않고, 루트가 아닌 저장소 경계 안의 것은 뺐다.
+    /// include/exclude 밖의 소스 후보(경로 정렬, 중복 없음). 결과 목록과 겹치지 않고, 걸은 길로 루트 아닌 저장소 경계
+    /// 아래인 것은 뺐다.
     let outsideScope: [OutsideScopeCandidate]
     /// 루트 밖이라 따라가지 않은 디렉터리 링크.
     let externalLinks: [String]
@@ -756,7 +757,7 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         /// 결과 목록에 넣지 않은 범위 밖 소스 후보(정렬). 결과를 재사용할 때도 Git 목록과 다시 대조한다.
         ///
         /// 추적 여부는 탐색 없이 바뀌므로(`git add -f`, `git rm --cached`) Git 목록에 있는 후보도 남긴다. 그래서 크기는 범위 밖
-        /// 후보 수에 비례하고, 지문마다 후보 하나당 집합 조회 하나를 한다. 중첩 저장소 안의 후보는 탐색 때 뺀다.
+        /// 후보 수에 비례하고, 지문마다 후보 하나당 집합 조회 하나를 한다. 걸은 길로 루트 아닌 저장소 경계 아래인 후보는 탐색 때 뺀다.
         let outsideScope: [OutsideScopeCandidate]
         /// 따라가지 않은 루트 밖 디렉터리 링크. 결과를 재사용할 때도 지문에 다시 싣는다.
         let externalLinks: [String]
@@ -958,14 +959,15 @@ private struct AnalysisInputFingerprinter {
         return inventory.paths
     }
 
-    /// 범위 밖 후보 중 Git 목록에 없는 것(무시됐거나 중첩 저장소 안). Git 선택을 못 했으면 빈 목록이다.
+    /// 범위 밖 후보 중 Git 목록에 없는 것(무시된 파일). Git 선택을 못 했으면 빈 목록이다.
     ///
     /// 한계의 `source-discovery-exclusions` 는 include/exclude 와 무관하게 Git 이 무시한 후보를 전부 세고, 그중
     /// 범위 밖 무시 소스는 따로 센다(`ProjectFileInventory`). 범위 안 경로만 지문에 실으면 범위 밖 무시 파일의 생성·삭제나
-    /// 추적 해제가 세대를 바꾸지 못해, 세션이 낡은 개수와 경로를 계속 싣는다. 중첩 저장소 안의 후보는 탐색이 이미
-    /// 뺐다(`outsideNestedRepositories`). 범위 밖이어도 Git 목록에 있는 파일은 한계에 들어가지 않으므로 싣지 않는다 —
-    /// 실으면 분석과 무관한 편집이 세션을 다시 준비시킨다. Git 선택이 실패하면 인벤토리도 무시 파일을 가려내지 않으므로
-    /// 실을 것이 없다. 목록 대조는 지문마다 한다 — `git add -f` 처럼 작업 트리를 건드리지 않는 변화는 탐색 캐시를 그대로 둔다.
+    /// 추적 해제가 세대를 바꾸지 못해, 세션이 낡은 개수와 경로를 계속 싣는다. 루트 아닌 저장소 경계 아래로 걸은
+    /// 후보는 탐색이 이미 뺐다(`recursiveFiles(separatesNestedRepositories:)`). 범위 밖이어도 Git 목록에 있는 파일은
+    /// 한계에 들어가지 않으므로 싣지 않는다 — 실으면 분석과 무관한 편집이 세션을 다시 준비시킨다. Git 선택이 실패하면
+    /// 인벤토리도 무시 파일을 가려내지 않으므로 실을 것이 없다. 목록 대조는 지문마다 한다 — `git add -f` 처럼 작업
+    /// 트리를 건드리지 않는 변화는 탐색 캐시를 그대로 둔다.
     private static func gitExcluded(
         _ outsideScope: [OutsideScopeCandidate], gitPaths: Set<String>?
     ) -> [OutsideScopeCandidate] {
@@ -1034,12 +1036,15 @@ private struct AnalysisInputFingerprinter {
         var discardedLinks: [String] = []
         var externalLinks: [String] = []
         var outsideScope: [String] = []
+        // 소스 루트는 소스 발견처럼 루트가 아닌 저장소 경계 아래를 가린다. 그 아래 범위 밖 후보는 발견이 세지 않는다.
         let paths = fileSystem.recursiveFiles(
-            under: root,
-            isIncluded: { path in
+            under: root, separatesNestedRepositories: filter != nil,
+            isIncluded: { path, insideNestedRepository in
                 switch classify(path) {
                 case .listed: return true
-                case .outsideScope: outsideScope.append(path); return false
+                case .outsideScope:
+                    if !insideNestedRepository { outsideScope.append(path) }
+                    return false
                 case .skipped: return false
                 }
             },
@@ -1049,9 +1054,8 @@ private struct AnalysisInputFingerprinter {
         )
         let markers = filter == nil ? (paths: [String](), links: [String]())
             : repositoryMarkers(in: walked, cache: cache)
-        let candidates = outsideScopeCandidates(
-            Self.outsideNestedRepositories(outsideScope.sorted(), boundaries: markers.paths, root: walked.first)
-        )
+        // 같은 실제 디렉터리를 두 길로 걸으면 같은 철자가 두 번 모인다.
+        let candidates = outsideScopeCandidates(Array(Set(outsideScope)).sorted())
         cache?.storeWalk(
             root: root, filter: filter, directories: walked, discardedLinks: discardedLinks,
             externalLinks: externalLinks, repositoryBoundaries: markers.paths,
@@ -1059,23 +1063,6 @@ private struct AnalysisInputFingerprinter {
         )
         return WalkedFiles(paths: paths, outsideScope: candidates, externalLinks: externalLinks,
             repositoryBoundaries: markers.paths)
-    }
-
-    /// 루트가 아닌 저장소 경계(`.git` 이 있는 디렉터리) 아래의 경로를 뺀다.
-    ///
-    /// 인벤토리는 `.git` 이 있는 디렉터리로 내려가지 않고 그 디렉터리 하나만 세며, 경계 자체는
-    /// `source-repository-boundary:` 로 싣는다. 그런데 Git 목록은 중첩 저장소·서브모듈·worktree 를 디렉터리나 gitlink 하나로만
-    /// 내므로, 빼지 않으면 그 안의 범위 밖 파일이 전부 "Git 이 고르지 않은 경로" 가 되어 worktree 에서 파일을 만들거나
-    /// 브랜치를 바꿀 때마다 답이 같은데도 세션을 다시 준비한다. `root` 는 탐색이 처음 연 디렉터리(실제 경로)다.
-    private static func outsideNestedRepositories(
-        _ paths: [String], boundaries: [String], root: String?
-    ) -> [String] {
-        let prefixes = boundaries.compactMap { boundary -> String? in
-            let directory = (boundary as NSString).deletingLastPathComponent
-            return directory == root ? nil : directory + "/"
-        }
-        guard !prefixes.isEmpty else { return paths }
-        return paths.filter { path in !prefixes.contains { path.hasPrefix($0) } }
     }
 
     /// 범위 밖 후보마다 항목 자체가 심볼릭 링크인지 붙인다. 탐색을 새로 할 때만 부른다.
@@ -1122,7 +1109,8 @@ private struct AnalysisInputFingerprinter {
                 }
             }
         }
-        return (paths.sorted(), links.sorted())
+        // 같은 실제 디렉터리를 경계 안팎 두 길로 걸으면 같은 디렉터리가 두 번 나온다.
+        return (Array(Set(paths)).sorted(), Array(Set(links)).sorted())
     }
 
     /// 따라가지 않은 루트 밖 디렉터리 링크를 지문에 싣는다. 링크가 없으면 아무것도 싣지 않아 지문이 그대로다.

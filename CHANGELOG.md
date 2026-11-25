@@ -79,9 +79,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   symbolic link also contributes its current target, so retargeting it or removing its target starts a new
   generation as well: whether the link counts depends on whether its target is a source Git lists. A link
   that was already broken when its directory was last listed is still not noticed when its target appears,
-  until that directory changes. Files outside the scope that Git lists in this repository, and files inside
-  nested repositories, submodules or worktrees (the limitation counts each of those as one excluded
-  directory, and the fingerprint already watched its `.git` entry), still do not refresh a session.
+  until that directory changes. Files outside the scope that Git lists in this repository, and files outside
+  the scope that are only reached through a nested repository, submodule or worktree (the limitation counts
+  each of those as one excluded directory, and the fingerprint already watched its `.git` entry), still do
+  not refresh a session. Nesting follows the walked path as discovery does, so a file reached through an
+  in-root directory link into such a repository is still fingerprinted. Files inside the scope are
+  fingerprinted by content even inside a nested repository, as before, although discovery skips them.
   Projects without such files keep the same fingerprint. **Upgrade note:** in projects that have them, a
   target-scope capture for `affected --target-scope` recorded by an earlier version no longer matches the
   input fingerprint and is treated like any stale capture; capture it again. The reason of a failed Git
