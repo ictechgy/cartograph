@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-22 by Claude (계열 점검 4차: 무시 소스 한계 문장 정정, 무시 컴파일 소스 하위 코퍼스·검증기, Linux 스크래치 검증)_
+_Last updated: 2026-11-25 by Claude (계열 점검 5차: 범위 밖 무시 파일을 세션 지문에 싣기, Linux 스크래치 검증)_
 
 작업 규칙은 [AGENTS.md](AGENTS.md), 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 있다
 (2026-09-25 기록은 그 파일 끝 절로 옮겼다). 이력의 오래된 버전·Next Steps는 현재 지시로 되살리지 않는다.
@@ -16,7 +16,67 @@ _Last updated: 2026-11-22 by Claude (계열 점검 4차: 무시 소스 한계 �
   아래 "PR #239 — B4 처리" 절을 본다. 이 PR도 CHANGELOG `[Unreleased]`에 들어가며 발행은 따로 지시가 있을 때 한다.
   PR #239는 `main` `8f6a1c3`로 스쿼시 머지됐고 그 커밋의 CI도 성공했다.
 - 계열 점검 3차(2026-11-22)는 PR #240으로 `main` `e56eac8`에 스쿼시 머지됐다. 아래 "3차 점검" 절을 본다.
-- 계열 점검 4차(2026-11-22)는 브랜치 `ccr-37904670-hxdjsx`(`main` `e56eac8` 기준)에 있다. 아래 "4차 점검" 절을 본다.
+- 계열 점검 4차(2026-11-22)는 PR #241로 `main` `05ae10b`에 스쿼시 머지됐다. 아래 "4차 점검" 절을 본다.
+- 계열 점검 5차(2026-11-25)는 브랜치 `ccr-37904670-hxdjsx`(`main` `05ae10b` 기준)에 있다. 아래 "5차 점검" 절을 본다.
+
+### 5차 점검 (2026-11-25, `main` `05ae10b` 기준)
+
+- **세션 지문이 범위 밖 무시 파일을 보게 했다** (`a01c740`, 4차 "물려받은 한계"의 MCP 세션 지문 항목). `ProjectFileInventory`는
+  include/exclude와 무관하게 Git이 무시한 후보(소스·헤더·IB·Core Data 리소스)를 `source-discovery-exclusions`로 세고, 그중
+  범위 밖 무시 소스는 따로 센다. 세션 지문(`AnalysisInputFingerprinter.addSourceFiles`)은 범위 안 경로와 범위 안 Git 목록만
+  실어서, 범위 밖 무시 파일이 생기거나 사라지거나 범위 밖 파일의 추적을 풀고 무시해도 세대가 그대로였고 `serve`는 낡은 개수·경로·
+  범위 밖 문장을 계속 냈다.
+  - 재현(Linux 스크래치, `main` 바이너리, 실제 `serve`·실제 인덱스): 기본 제외 `**/*.generated.swift`에 걸리는 무시
+    `R.generated.swift`를 만들면 새 CLI `query`는 `source-discovery-exclusions: 1 …; paths: ["Sources/Tiny/R.generated.swift"]`를 내는데
+    세션은 세대 1 그대로 한계가 없다. `git rm --cached` 뒤 무시한 `Tracked.generated.swift`도 같다(5단계 중 2단계 불일치).
+  - 수정: 지문 탐색이 범위 밖 후보를 결과 목록과 따로 모으고(`WalkInclusion.outsideScope`, 탐색 캐시 `WalkRecord.outsideScope`),
+    Git 목록에 없는 것만 경로로 싣는다(`git-excluded-outside-scope:`). 내용은 읽지 않는다. 범위 밖이어도 Git 목록에 있는 파일은 싣지
+    않아 세션을 다시 준비시키지 않는다. 그런 파일이 없는 프로젝트는 지문이 바이트까지 같다.
+  - 처음 안은 범위 밖 후보를 결과 목록에 넣고 나중에 걸렀는데, 탐색은 같은 파일의 두 이름 중 먼저 걸은 것만 남기므로 범위 밖 무시
+    링크(`Alias.generated.swift -> Zone.swift`)가 범위 안 원본을 목록에서 밀어내 그 내용 편집이 세대를 바꾸지 못했다. 그래서 범위 밖
+    후보는 목록에 넣지 않고 따로 모은다. 이 형태는 새 테스트 두 번째가 고정한다.
+  - 테스트(`GitSourceFreshnessTests`): 생성·삭제·추적 파일(세대 그대로)·추적 해제를 한 세션으로 돌리며 세대와 한계가 새 세션과 같은지,
+    그리고 위 링크 형태. 첫 테스트는 `main` 소스에서 7건 실패한다. 돌연변이 셋도 모두 잡힌다 — 범위 밖 후보를 목록에 넣는 처음 안
+    (링크 테스트 1건), 범위 밖 경로를 싣지 않음(첫 테스트 7건), Git 목록 대조를 빼고 범위 밖 후보를 전부 실음(추적 파일에서 세대가
+    바뀌어 4건).
+  - 적대 입력(실제 `serve` 한 세션 대 매 단계 새 CLI `query`, 한 패키지·한 인덱스, 21단계): 무시 파일 생성·삭제, 무시되지 않은 비추적
+    범위 밖 파일, 같은 파일의 추적, 추적 해제와 무시, `.git/info/exclude`, 기본 제외 `Generated/` 아래 파일, 한글·공백 이름과 새 무시 글롭,
+    무시된 헤더·xib(기본 설정에서는 범위 안), 추적 파일을 가리키는 무시 링크, 사용자 `exclude`가 기본값을 대체, 그 패턴 아래 무시 파일,
+    좁힌 `include`와 그 밖의 무시 파일·추적 파일·무시 디렉터리 안 파일·디렉터리 삭제, 범위 밖 중첩 저장소와 그 안 파일, 설정 삭제.
+    `main`은 11단계에서 세션과 새 실행의 `limitations`가 달랐고 브랜치는 0단계다. 범위 밖 추적·비추적 파일 세 단계에서 세대가 그대로다.
+    중첩 저장소 안 파일 추가는 세대를 바꾸지만 답은 같다(아래 남은 것).
+  - 성능(Linux 릴리스 빌드 두 벌, 같은 패키지, `--session-freshness-interval 0`, 따뜻한 `cartograph_status` 25회의 중앙값, 공유 머신이라
+    잡음이 크다. `Fixtures/**`를 제외한 패키지에 범위 밖 파일 N개): 무시 모드 N=2,000에서 `main` 58.5·55.6 ms 대 브랜치 65.3·64.1 ms,
+    N=20,000에서 56.7·56.0 ms 대 112.2·125.5 ms로 파일당 약 3 µs씩 선형으로 는다(경로 해시. 스크래치는 CryptoKit 대신 순수 Swift SHA-256을
+    쓴다). 추적 모드는 두 번의 측정에서 앞뒤가 뒤집혀 잡음 안이다(N=20,000: 965 대 871, 829 대 996 ms).
+  - 기존 비용(이번에 고치지 않음): 추적 모드의 `main` 자체가 N=20,000에서 따뜻한 호출 하나에 0.8~1초다. `addGitSourceSelection`이 지문마다
+    Git 목록 전체를 정렬하고 경로마다 글롭 대조를 하기 때문이다(탐색 쪽은 판정을 메모하지만 이 반복은 하지 않는다). 범위 밖 추적 파일이
+    많은 저장소의 `serve` 비용 후보다.
+  - 업그레이드 노트(CHANGELOG): 그런 파일이 있는 프로젝트에서는 이전 버전이 기록한 `affected --target-scope` 캡처의 입력 지문이 맞지
+    않아 낡은 캡처로 다룬다. 다시 캡처한다.
+  - 남은 것: Git 선택 실패 이유는 지문에 없다(두 실패 이유 사이의 전환이 세대를 바꾸지 않음, 결정적으로 재현할 방법이 없어 두었다).
+    `empty-index` 한계의 전체 소스 수는 범위 밖 추적 파일까지 세는데 그 파일들은 지문에 없다(탈출구를 켠 빈 인덱스에서만 보이는 수).
+    중첩 저장소 안의 범위 밖 파일은 한계가 저장소 하나로 세지만 지문에는 경로로 들어가 필요 없는 재준비를 할 수 있다(답은 같다).
+- **검증**(Linux 스크래치, 4차와 같은 방법: `mirror.gcr.io`의 `swift:6.4.3-noble` amd64 툴체인 레이어 `sha256:ec37e35b…`를 매니페스트와
+  대조): 이번 사본 shim은 4차보다 많다 — `FoundationXML` import, `posix_spawn*_t` 비옵셔널, `siginfo_t._sifields`, `proc_listpgrppids`(0),
+  `CFGetTypeID` 대체, `autoreleasepool`(Linux Foundation에 없음, 별도 파일), 테스트의 `st_atim`·`AnyObject.isEqual`. 바꾼 두 파일은 사본과
+  저장소가 바이트까지 같다.
+  - `swift test`: Core 236·Config 36·Syntax 631·Analysis 546·Export 73 통과. Kit·CLI·IndexStore 이슈 수는 `main` 소스 사본 14+7·26·15,
+    브랜치 14·26·15다(`main`의 7은 새 테스트). 실패 테스트 이름도 새 테스트를 빼고 같다. 예외 하나: CLI의 `macOS collector`
+    (`/usr/bin/xcrun` 없음) 실패 줄은 브랜치 로그에만 있는데, 타깃 출력이 섞인 `main` 로그에는 이 테스트의 결과 줄 자체가 없고 CLI 이슈 수는
+    두 실행 모두 26이다.
+  - 자기 분석 네 가지 exit 0. `dead` 26건(shim 4건 포함)은 같은 인덱스에서 `main` 바이너리와 줄까지 같고 정점 9845. 순환 없음, `rules`는
+    shim 모듈 레이어 미지정 정보 3건.
+  - `verify-cli-contract.sh`: 276 ok, 실패 3건은 모두 `xcrun`(인덱스를 만드는 2건과 `verify-since-lines.py`)이고 `main` 바이너리와 ok·FAIL 줄이
+    같다. `verify-mcp.py` 통과, `verify-ignored-sources.py` 통과(경로 4개·미사용 7건), `verify-prepared-indexstore-sessions.py` 18 OK,
+    `unittest discover -s Scripts/benchmark-inputs` 311 OK, `verify-plugin-manifest.py` OK.
+  - 지문 동일성: 범위 밖 무시 파일이 없는 cartograph 자기 분석·Yams·swift-argument-parser에서 `cartograph_status`의 지문·한계가
+    `main` 바이너리와 같다.
+  - 못 돌린 것: `coverage.sh`(`xcrun llvm-cov`), `verify-fixtures.sh` 전체(SwiftUI·Objective-C·macOS 인덱스),
+    `followup-verify-mcp-preparation.py`(macOS 전용), macOS 전용 테스트. 근거는 macOS CI다. GLM 리뷰는 이 환경에서 쓸 수 없었다.
+- **제외한 것**: D1·D2(사용자 결정), B1·B3·B5·C(사용자 선택), B2(Narrowing 절차), 보조 인덱스 읽기 비용 측정(실제 프로젝트 필요),
+  4차의 다른 물려받은 한계 둘(대소문자만 바꾼 이름 변경, 저장소 안 디렉터리 링크 — Linux에서 재현 불가), `assign-only` 문구 고정,
+  `accessHidingOwners` 첫 루프 정리, `CartographKit` 임베더 `Thresholds` 검사.
 
 ### 4차 점검 (2026-11-22, `main` `e56eac8` 기준)
 
@@ -99,8 +159,8 @@ _Last updated: 2026-11-22 by Claude (계열 점검 4차: 무시 소스 한계 �
   - 대소문자만 바꾼 이름 변경: 대소문자를 가리지 않는 파일 시스템에서 `mv Foo.swift foo.swift` 뒤 Git 색인에는 `Foo.swift`가 남고 걷기는
     `foo.swift`를 낸다. `git.paths.contains`는 대소문자를 가리므로 그 파일이 무시 소스로 세지고 분석에서 빠질 수 있다(코드 판독, Linux
     ext4에서는 재현 불가).
-  - MCP 세션 지문: 세션 재사용 판단이 범위 안 경로만 보면 범위 밖 무시 파일이 생기거나 사라져도 개수가 낡을 수 있다는 지적이다.
-    이 세션에서 확인하지 않았다(`AnalysisSession.walk`의 캐시 키와 `ProjectFileInventory`의 관계를 볼 것).
+  - ~~MCP 세션 지문: 세션 재사용 판단이 범위 안 경로만 보면 범위 밖 무시 파일이 생기거나 사라져도 개수가 낡을 수 있다는 지적이다.~~
+    5차 점검에서 재현하고 고쳤다(위 "5차 점검").
 - **제외한 것**:
   - 범위 밖 무시 소스를 따라가 보존하는 것(아래 "남은 후보" D1). 보존을 넓히는 쪽이지만 `exclude`의 뜻을 바꾼다. 추적되는 제외 파일은
     지금도 간선을 버리므로, 무시 파일만 따라가면 같은 `R.generated.swift`가 추적 여부에 따라 다른 답을 낸다.
@@ -273,6 +333,8 @@ _Last updated: 2026-11-22 by Claude (계열 점검 4차: 무시 소스 한계 �
 5. PR #239(B4)의 macOS CI에서 `AgentSkillTemplateTests`·`verify-mcp.py`·`verify-plugin-manifest.py`와 완료 검증
    네 가지를 확인한다. `claude plugin validate .`(v2.1.281 이상이면 MCP 항목도 검사)를 돌릴 수 있는 환경이면 함께
    돌린다. GLM 리뷰를 받을 수 있게 되면 이 변경도 후속 리뷰한다.
+6. 5차 점검 PR의 macOS CI에서 `GitSourceFreshnessTests`의 새 테스트 두 개(`/private/var` 임시 경로·APFS)와 `verify-mcp.py`,
+   완료 검증 네 가지를 확인한다. Linux 스크래치에서는 통과했다.
 
 | 발행물 | 상태 |
 |---|---|
