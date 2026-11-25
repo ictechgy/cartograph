@@ -112,6 +112,30 @@ _Last updated: 2026-11-25 by Claude (계열 점검 5차: 범위 밖 무시 파�
     실제 `serve` 21단계 0건 불일치, 재현 5단계 모두 같음, 리뷰 시퀀스(F1 세 단계 포함 19단계)는 13·16단계(처음부터 끊어진 링크, 남은 틈)만
     다르다. cartograph·Yams·swift-argument-parser 지문·한계가 `35f9b55` 바이너리와 같고, cartograph worktree 편집은 두 바이너리 모두 지문을
     바꾸지 않는다. 디버그 빌드 따뜻한 호출(`35f9b55` 대 새)은 잡음 안이다(무시 N=20,000: 849 대 805 ms, 링크 N=20,000: 2,123 대 2,108 ms).
+- **3차 리뷰 반영** (`a217c2a` 최종 재검토, 차단·고칠 것 없음, 잔지적 셋, `a217c2a` 위에 커밋):
+  - N1 문구: 중첩 저장소 루트 아래 디렉터리를 가리키는 루트 안 링크만 발견이 세고 지문에 들어간다. 저장소 루트 자체를 가리키는 링크
+    (`App/LibLink -> ../Vendor/Lib`)는 링크의 `.git`이 있어 저장소처럼 건너뛴다. README 두 벌·CHANGELOG를 고쳤다.
+  - N2 루트 밖 디렉터리 링크 중복: 같은 디렉터리를 경계 안팎 두 길로 걸으면(중첩 저장소 안의 `up -> ../..`) 그 안의 루트 밖 디렉터리 링크가
+    두 번 보고되어, 범위 밖 무시 파일이 없는 프로젝트도 `main`과 지문이 달랐다. 이제 `recursiveFiles(separatesNestedRepositories:)`가
+    디렉터리·버려진 링크·루트 밖 디렉터리 링크 콜백을 경로마다 한 번만 부른다(끄면 같은 경로를 두 번 걷지 않으므로 그대로). 재현 패키지
+    (중첩 저장소 안 `up -> ..`, `Sources/ext -> 루트 밖`)의 `cartograph_status` 지문이 `a217c2a`에서는 `main`과 달랐고 새 바이너리는 `main`과
+    같다. Core 테스트 "경계를 넘는 링크 순환도 끝나고 같은 디렉터리와 링크를 콜백에 한 번만 알린다"가 `a217c2a`에서 2건 실패한다.
+  - N3 Core 테스트: 위 테스트와 "경계는 걸은 길로 정하고 .git 파일은 경계, 끊어진 .git 링크와 루트의 .git 은 경계가 아니다"(경계 안팎 두 길로
+    걸어도 결과에 중복이 없음 포함)를 `FileSystemTests`에 더했다. 둘째는 `a217c2a`에서도 통과한다(동작을 고정하는 테스트).
+  - N-a 비용(Linux 릴리스 빌드, 따뜻한 `cartograph_status` 25회 중앙값, 두 번): 범위 밖 무시 링크 20,000개는 611.5·474.7 ms, 같은 수의
+    무시 파일은 129.6·122.0 ms다(링크당 약 18~24 µs). 2,000개는 101.9·98.6 대 64.6·64.0 ms. CHANGELOG에도 한 문장을 넣었다.
+  - macOS CI(`a217c2a`, "Build, test and gate coverage", 이슈 1건): 코드로 원인을 짚지 못했다. 바뀐 경로에서 철자와 실제 경로를 비교하는
+    곳을 다시 봤다 — 탐색 키는 `realpath`(링크)나 부모 키 + 이름이고 `canonicalPath`(URL)와 섞지 않는다. `.git` 판정은 이미 읽은 목록의
+    `path.hasSuffix("/.git")`와 항목 종류뿐이다. 새 F1 테스트는 `fs.realPath`로 푼 루트 아래에서만 경로를 만들고, 목록은 정렬되어 순서에
+    기대지 않는다. Linux에서 세션·탐색 스위트(GitSourceFreshness·NestedRepositoryTraversal·SymlinkTraversal·AnalysisSession, 73건)를
+    15번 돌려 새 실패가 없었다(매번 같은 1건은 root가 권한 000을 무시하는 알려진 Linux 실패). 단언은 약하게 하지 않았다. 다음 push의 macOS
+    CI가 근거다. 후보로 남는 것은 macOS 쪽 타이밍 테스트(예: 프로세스 그룹)다.
+  - 남은 틈(이전부터, `main` 포함): 중첩 저장소 루트를 가리키는 링크를 새로 만들면 발견은 그 링크 경로를 제외 하나로 더 세지만, 지문은
+    링크 대상이 이미 걸은 디렉터리라 그 링크를 보지 않아 세대가 그대로다(리뷰 시퀀스 F1d). 링크 디렉터리의 `.git` 존재를 지문에 싣는 것이
+    후보다.
+  - 재검증: `swift test` 실패 이름 48개 동일(Kit 15·CLI 26·IndexStore 15, Core 238 통과, 새 테스트 통과). 자기 분석 네 가지 exit 0, `dead`
+    26건이 `a217c2a` 바이너리와 같고 정점 9854. cartograph·Yams·swift-argument-parser 지문·한계가 `main`·`a217c2a`·새 바이너리 셋 모두
+    같다. 실제 `serve` 재현 5단계 모두 같고, 리뷰 시퀀스(21단계)는 F1d·F1e(위 남은 틈과 그 여파)·12·13(끊어진 링크)·16(범위 안)만 다르다.
 - **검증**(Linux 스크래치, 4차와 같은 방법: `mirror.gcr.io`의 `swift:6.4.3-noble` amd64 툴체인 레이어 `sha256:ec37e35b…`를 매니페스트와
   대조): 이번 사본 shim은 4차보다 많다 — `FoundationXML` import, `posix_spawn*_t` 비옵셔널, `siginfo_t._sifields`, `proc_listpgrppids`(0),
   `CFGetTypeID` 대체, `autoreleasepool`(Linux Foundation에 없음, 별도 파일), 테스트의 `st_atim`·`AnyObject.isEqual`. 바꾼 두 파일은 사본과
